@@ -1,0 +1,12 @@
+{
+  "name": "tello-pro",
+  "version": "1.0.0",
+  "description": "Tello drone control console — controller UI + live video feed",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}

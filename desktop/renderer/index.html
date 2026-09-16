@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Tello Pro</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span class="brand-name">TELLO PRO</span>
+    </div>
+    <div class="status-strip">
+      <div class="status-item">
+        <span class="dot" id="conn-dot"></span>
+        <span id="conn-label">disconnected</span>
+      </div>
+      <div class="status-item mono">BAT <b id="bat-val">--</b>%</div>
+      <div class="status-item mono">ALT <b id="alt-val">--</b>cm</div>
+      <div class="status-item mono">T <b id="time-val">--</b>s</div>
+      <button id="connect-btn" class="btn btn-primary">Connect</button>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <section class="video-pane">
+      <div class="video-frame" id="video-frame">
+        <img id="video-img" alt="Live feed" />
+        <div class="video-placeholder" id="video-placeholder">
+          <div class="scan-line"></div>
+          <p>No signal — connect, then start video</p>
+        </div>
+      </div>
+      <div class="video-controls">
+        <button id="video-toggle" class="btn">Start Video</button>
+        <button id="square-btn" class="btn btn-ghost">Auto: Fly Square</button>
+      </div>
+    </section>
+
+    <aside class="control-panel">
+
+      <div class="panel-block">
+        <button id="flight-toggle" class="btn btn-flight" disabled>TAKEOFF</button>
+        <button id="emergency-btn" class="btn btn-emergency" disabled>EMERGENCY STOP</button>
+      </div>
+
+      <div class="panel-block">
+        <div class="panel-label">Move / Rotate</div>
+        <div class="dpad">
+          <button class="pad-btn pad-fwd" data-cmd="forward" title="Forward (W)">▲</button>
+          <button class="pad-btn pad-left" data-cmd="left" title="Left (A)">◀</button>
+          <button class="pad-btn pad-ccw" data-cmd="ccw" title="Rotate CCW (Q)">↺</button>
+          <button class="pad-btn pad-cw" data-cmd="cw" title="Rotate CW (E)">↻</button>
+          <button class="pad-btn pad-right" data-cmd="right" title="Right (D)">▶</button>
+          <button class="pad-btn pad-back" data-cmd="back" title="Back (S)">▼</button>
+        </div>
+        <div class="vpad">
+          <button class="pad-btn pad-up" data-cmd="up" title="Up (Arrow Up)">UP</button>
+          <button class="pad-btn pad-down" data-cmd="down" title="Down (Arrow Down)">DOWN</button>
+        </div>
+      </div>
+
+      <div class="panel-block">
+        <div class="panel-label">Flip</div>
+        <div class="flip-row">
+          <button class="btn btn-small" data-flip="f">FWD</button>
+          <button class="btn btn-small" data-flip="b">BACK</button>
+          <button class="btn btn-small" data-flip="l">LEFT</button>
+          <button class="btn btn-small" data-flip="r">RIGHT</button>
+        </div>
+      </div>
+
+      <div class="panel-block">
+        <div class="panel-label">Trim</div>
+        <div class="trim-row">
+          <label>Distance <span id="distance-out" class="mono">50cm</span></label>
+          <input type="range" id="distance-slider" min="20" max="200" value="50" step="10" />
+        </div>
+        <div class="trim-row">
+          <label>Angle <span id="angle-out" class="mono">90°</span></label>
+          <input type="range" id="angle-slider" min="15" max="180" value="90" step="15" />
+        </div>
+        <div class="trim-row">
+          <label>Speed <span id="speed-out" class="mono">50</span></label>
+          <input type="range" id="speed-slider" min="10" max="100" value="50" step="10" />
+        </div>
+      </div>
+
+      <div class="panel-block hint">
+        Keyboard: <span class="mono">W A S D</span> move · <span class="mono">Q E</span> rotate ·
+        <span class="mono">↑ ↓</span> altitude · <span class="mono">Space</span> takeoff/land
+      </div>
+
+    </aside>
+
+  </main>
+
+  <footer class="console">
+    <div class="attitude mono">
+      PITCH <span id="pitch-val">0</span>&nbsp;&nbsp;
+      ROLL <span id="roll-val">0</span>&nbsp;&nbsp;
+      YAW <span id="yaw-val">0</span>&nbsp;&nbsp;
+      TEMP <span id="temp-val">--</span>°C
+    </div>
+    <div class="log" id="log"></div>
+  </footer>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
