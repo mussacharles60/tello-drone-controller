@@ -14,6 +14,8 @@ const els = {
   videoImg: document.getElementById('video-img'),
   videoPlaceholder: document.getElementById('video-placeholder'),
   videoToggle: document.getElementById('video-toggle'),
+  recordToggle: document.getElementById('record-toggle'),
+  recordTime: document.getElementById('record-time'),
   squareBtn: document.getElementById('square-btn'),
   flightToggle: document.getElementById('flight-toggle'),
   emergencyBtn: document.getElementById('emergency-btn'),
@@ -29,6 +31,9 @@ const els = {
 let connected = false;
 let flying = false;
 let videoOn = false;
+let recordingOn = false;
+let recordTimer = null;
+let recordStartedAt = null;
 
 function setEnabled(flying_) {
   document.querySelectorAll('.pad-btn').forEach((b) => { b.disabled = !connected; });
@@ -175,19 +180,71 @@ els.videoToggle.addEventListener('click', async () => {
       els.videoPlaceholder.classList.add('hidden');
       videoOn = true;
       els.videoToggle.textContent = 'Stop Video';
+      els.recordToggle.disabled = false;
     } catch (err) {
       logLine(`video error: ${err.message}`);
     } finally {
       els.videoToggle.disabled = false;
     }
   } else {
+    if (recordingOn) await stopRecordingUI();
     await window.tello.stopVideo();
     els.videoImg.classList.remove('active');
     els.videoImg.src = '';
     els.videoPlaceholder.classList.remove('hidden');
     videoOn = false;
     els.videoToggle.textContent = 'Start Video';
+    els.recordToggle.disabled = true;
   }
+});
+
+// ---- Recording ----
+
+function formatElapsed(ms) {
+  const totalSec = Math.floor(ms / 1000);
+  const m = String(Math.floor(totalSec / 60)).padStart(2, '0');
+  const s = String(totalSec % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+async function startRecordingUI() {
+  els.recordToggle.disabled = true;
+  try {
+    await window.tello.startRecording();
+    recordingOn = true;
+    recordStartedAt = Date.now();
+    els.recordToggle.classList.add('active');
+    recordTimer = setInterval(() => {
+      els.recordTime.textContent = formatElapsed(Date.now() - recordStartedAt);
+    }, 500);
+  } catch (err) {
+    logLine(`recording error: ${err.message}`);
+  } finally {
+    els.recordToggle.disabled = false;
+  }
+}
+
+async function stopRecordingUI() {
+  els.recordToggle.disabled = true;
+  try {
+    await window.tello.stopRecording();
+  } catch (err) {
+    logLine(`recording error: ${err.message}`);
+  } finally {
+    recordingOn = false;
+    els.recordToggle.classList.remove('active');
+    els.recordToggle.disabled = !videoOn;
+    if (recordTimer) {
+      clearInterval(recordTimer);
+      recordTimer = null;
+    }
+    els.recordTime.textContent = '';
+  }
+}
+
+els.recordToggle.addEventListener('click', () => {
+  if (!recordingOn) startRecordingUI();
+  else stopRecordingUI();
 });
 
 // ---- Auto: square ----

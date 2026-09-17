@@ -11,8 +11,9 @@
 
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const dgram = require('dgram');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const http = require('http');
 
 // ----- Configuration ---------------------------------------------------
@@ -22,7 +23,9 @@ const COMMAND_PORT = 8889;
 const STATE_PORT = 8890;
 const LOCAL_COMMAND_PORT = 9000;
 const COMMAND_TIMEOUT_MS = 7000;
-const VIDEO_UDP_PORT = 11111;
+const DRONE_VIDEO_PORT = 11111;   // Tello always sends its video here
+const LIVE_RELAY_PORT = 11112;    // local: live-preview ffmpeg reads here
+const RECORD_RELAY_PORT = 11113;  // local: recording ffmpeg reads here
 const VIDEO_HTTP_PORT = 3005;
 
 // ----- State -------------------------------------------------------------
@@ -37,6 +40,12 @@ let lastState = {};
 let ffmpegProc = null;
 let videoServer = null;
 const mjpegClients = [];
+
+let relaySocket = null;     // receives raw drone video, fans it out locally
+let forwardSocket = null;   // used to re-send packets to the local relay ports
+let recordProc = null;
+let recording = false;
+let currentRecordingPath = null;
 
 // ----- Logging helper: mirrors to the renderer's on-screen console -------
 
@@ -145,61 +154,129 @@ function startSockets() {
 
 // ----- Video pipeline: ffmpeg (H.264 -> mpjpeg) -> local HTTP server -----
 
+function checkFfmpegAvailable() {
+  const result = spawnSync('ffmpeg', ['-version']);
+  if (result.error) {
+    return { ok: false, detail: result.error.message };
+  }
+  if (result.status !== 0) {
+    return { ok: false, detail: `exited with code ${result.status}` };
+  }
+  const firstLine = (result.stdout || '').toString().split('\n')[0];
+  return { ok: true, detail: firstLine };
+}
+
 function startVideo() {
   if (ffmpegProc) return { url: `http://localhost:${VIDEO_HTTP_PORT}/stream` };
 
+  const check = checkFfmpegAvailable();
+  if (!check.ok) {
+    log(`ffmpeg not found on PATH (${check.detail}). Install it and make sure "ffmpeg -version" works from a terminal, then restart this app.`);
+    throw new Error('ffmpeg not found on PATH');
+  }
+  log(`ffmpeg found: ${check.detail}`);
+
+  // The relay is a plain UDP socket bound to the port the Tello actually
+  // sends video to. It doesn't decode anything — it just re-sends every
+  // packet it receives to whichever local ports need a copy (live preview,
+  // and recording once that's turned on). This is what lets both run off
+  // a single real video source instead of fighting over the same port.
+  relaySocket = dgram.createSocket('udp4');
+  forwardSocket = dgram.createSocket('udp4');
+
+  relaySocket.on('message', (packet) => {
+    forwardSocket.send(packet, LIVE_RELAY_PORT, '127.0.0.1');
+    if (recording) {
+      forwardSocket.send(packet, RECORD_RELAY_PORT, '127.0.0.1');
+    }
+  });
+  relaySocket.on('error', (err) => log(`video relay error: ${err.message}`));
+  relaySocket.bind(DRONE_VIDEO_PORT, '0.0.0.0', () => {
+    log(`video relay listening on UDP ${DRONE_VIDEO_PORT}, forwarding to local port ${LIVE_RELAY_PORT}`);
+  });
+
+  let firstFrameSeen = false;
+
   ffmpegProc = spawn('ffmpeg', [
-    '-fflags', 'nobuffer',
-    '-flags', 'low_delay',
-    '-i', `udp://0.0.0.0:${VIDEO_UDP_PORT}`,
+    '-buffer_size', '2000000',
+    '-i', `udp://127.0.0.1:${LIVE_RELAY_PORT}`,
+    '-pix_fmt', 'yuv420p',
     '-f', 'mpjpeg',
     '-q:v', '5',
     '-r', '15',
     'pipe:1',
   ]);
+  log(`ffmpeg (live preview) spawned (pid ${ffmpegProc.pid})`);
 
   ffmpegProc.stdout.on('data', (chunk) => {
+    if (!firstFrameSeen) {
+      firstFrameSeen = true;
+      log('video: receiving frames from ffmpeg — feed should be live now.');
+    }
     for (const res of mjpegClients) res.write(chunk);
   });
-  ffmpegProc.stderr.on('data', () => {
-    // ffmpeg's progress noise goes to stderr; suppressed here.
+  ffmpegProc.stderr.on('data', (chunk) => {
+    const text = chunk.toString();
+    console.error(`[ffmpeg] ${text}`);
+    const lastLine = text.trim().split('\n').pop();
+    if (lastLine) log(`ffmpeg: ${lastLine}`);
   });
   ffmpegProc.on('error', (err) => {
     log(`failed to start ffmpeg — is it installed and on your PATH? (${err.message})`);
     ffmpegProc = null;
   });
   ffmpegProc.on('close', (code) => {
-    log(`ffmpeg exited (code ${code}).`);
+    log(`ffmpeg (live preview) exited (code ${code}).`);
+    if (!firstFrameSeen) {
+      log('ffmpeg closed before any video frames arrived — see the terminal for the full ffmpeg log above.');
+    }
     ffmpegProc = null;
   });
 
-  videoServer = http.createServer((req, res) => {
-    if (req.url === '/stream') {
-      res.writeHead(200, {
-        'Content-Type': 'multipart/x-mixed-replace;boundary=ffmpeg',
-        'Cache-Control': 'no-cache',
-        Connection: 'close',
-        Pragma: 'no-cache',
-      });
-      mjpegClients.push(res);
-      req.on('close', () => {
-        const idx = mjpegClients.indexOf(res);
-        if (idx !== -1) mjpegClients.splice(idx, 1);
-      });
-    } else {
-      res.writeHead(404);
-      res.end();
-    }
-  });
-  videoServer.listen(VIDEO_HTTP_PORT);
+  if (!videoServer) {
+    videoServer = http.createServer((req, res) => {
+      if (req.url.split('?')[0] === '/stream') {
+        res.writeHead(200, {
+          'Content-Type': 'multipart/x-mixed-replace;boundary=ffmpeg',
+          'Cache-Control': 'no-cache',
+          Connection: 'close',
+          Pragma: 'no-cache',
+        });
+        mjpegClients.push(res);
+        req.on('close', () => {
+          const idx = mjpegClients.indexOf(res);
+          if (idx !== -1) mjpegClients.splice(idx, 1);
+        });
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    videoServer.on('error', (err) => {
+      log(`video HTTP server error: ${err.message} — is port ${VIDEO_HTTP_PORT} already in use?`);
+    });
+    videoServer.listen(VIDEO_HTTP_PORT, () => {
+      log(`video server listening at http://localhost:${VIDEO_HTTP_PORT}/stream`);
+    });
+  }
 
   return { url: `http://localhost:${VIDEO_HTTP_PORT}/stream` };
 }
 
 function stopVideo() {
+  if (recording) stopRecording();
+
   if (ffmpegProc) {
     ffmpegProc.kill('SIGINT');
     ffmpegProc = null;
+  }
+  if (relaySocket) {
+    relaySocket.close();
+    relaySocket = null;
+  }
+  if (forwardSocket) {
+    forwardSocket.close();
+    forwardSocket = null;
   }
   for (const res of mjpegClients) res.end();
   mjpegClients.length = 0;
@@ -207,6 +284,69 @@ function stopVideo() {
     videoServer.close();
     videoServer = null;
   }
+}
+
+// ----- Recording: a second ffmpeg reading the relayed copy, stream-copied
+// straight into an .mp4 file (no re-encoding — cheap and lossless). -----
+
+function startRecording() {
+  if (recording) return { path: currentRecordingPath };
+  if (!ffmpegProc || !relaySocket) {
+    throw new Error('start video before recording');
+  }
+
+  const dir = path.join(app.getPath('videos'), 'TelloPro');
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  currentRecordingPath = path.join(dir, `tello-${stamp}.mp4`);
+
+  recording = true; // relay starts forwarding to RECORD_RELAY_PORT immediately
+
+  recordProc = spawn('ffmpeg', [
+    '-y',
+    '-buffer_size', '2000000',
+    '-i', `udp://127.0.0.1:${RECORD_RELAY_PORT}`,
+    '-c', 'copy',
+    '-movflags', '+frag_keyframe+empty_moov',
+    '-f', 'mp4',
+    currentRecordingPath,
+  ]);
+  log(`recording started -> ${currentRecordingPath}`);
+
+  recordProc.stderr.on('data', (chunk) => {
+    console.error(`[ffmpeg:record] ${chunk.toString()}`);
+  });
+  recordProc.on('error', (err) => {
+    log(`recording failed to start: ${err.message}`);
+    recording = false;
+    recordProc = null;
+  });
+  recordProc.on('close', (code) => {
+    log(`recording stopped (code ${code}) — saved to ${currentRecordingPath}`);
+    recordProc = null;
+  });
+
+  return { path: currentRecordingPath };
+}
+
+function stopRecording() {
+  if (!recording) return null;
+  recording = false;
+  const savedPath = currentRecordingPath;
+  if (recordProc) {
+    // Ask ffmpeg to quit gracefully so it finalizes the mp4 properly;
+    // fall back to a hard kill if it doesn't exit on its own.
+    try {
+      recordProc.stdin.write('q');
+    } catch (err) {
+      // stdin may already be closed
+    }
+    const proc = recordProc;
+    setTimeout(() => {
+      if (proc && !proc.killed) proc.kill('SIGINT');
+    }, 2000);
+  }
+  return { path: savedPath };
 }
 
 // ----- IPC surface exposed to the renderer (via preload.js) --------------
@@ -240,6 +380,10 @@ ipcMain.handle('tello:video:stop', async () => {
     // ignore — stream may already be off
   }
 });
+
+ipcMain.handle('tello:video:record:start', async () => startRecording());
+
+ipcMain.handle('tello:video:record:stop', async () => stopRecording());
 
 ipcMain.handle('tello:auto:square', async (_event, sideCm) => {
   const size = sideCm || 80;

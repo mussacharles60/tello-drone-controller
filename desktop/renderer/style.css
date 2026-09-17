@@ -144,6 +144,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  max-height: 80vh;
 }
 
 #video-img {
@@ -178,7 +179,32 @@ body {
   100% { top: 100%; }
 }
 
-.video-controls { display: flex; gap: 10px; }
+.video-controls { display: flex; gap: 10px; align-items: center; }
+
+.btn-record { display: flex; align-items: center; gap: 6px; }
+.rec-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--red);
+  display: inline-block;
+}
+.btn-record.active {
+  border-color: var(--red);
+  color: var(--red);
+  background: rgba(226, 76, 61, 0.12);
+}
+.btn-record.active .rec-dot {
+  animation: rec-pulse 1s ease-in-out infinite;
+}
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.record-time {
+  font-size: 12px;
+  color: var(--red);
+}
 
 /* ---- Control panel ---- */
 
