@@ -4,6 +4,7 @@ const els = {
   connDot: document.getElementById('conn-dot'),
   connLabel: document.getElementById('conn-label'),
   connectBtn: document.getElementById('connect-btn'),
+  disconnectBtn: document.getElementById('disconnect-btn'),
   batVal: document.getElementById('bat-val'),
   altVal: document.getElementById('alt-val'),
   timeVal: document.getElementById('time-val'),
@@ -41,6 +42,7 @@ function setEnabled(flying_) {
   els.flightToggle.disabled = !connected;
   els.emergencyBtn.disabled = !connected;
   els.squareBtn.disabled = !connected;
+  els.disconnectBtn.disabled = !connected || flying_;
 }
 
 function logLine(msg) {
@@ -72,12 +74,50 @@ els.connectBtn.addEventListener('click', async () => {
     els.connDot.classList.add('live');
     els.connLabel.textContent = 'connected';
     els.connectBtn.textContent = 'Connected';
+    els.connectBtn.style.display = 'none';
+    els.disconnectBtn.style.display = '';
     setEnabled(flying);
   } catch (err) {
     els.connLabel.textContent = 'connection failed';
     els.connectBtn.textContent = 'Retry Connect';
     els.connectBtn.disabled = false;
     logLine(`connect failed: ${err.message}`);
+  }
+});
+
+// ---- Disconnect ----
+
+els.disconnectBtn.addEventListener('click', async () => {
+  els.disconnectBtn.disabled = true;
+  try {
+    await window.tello.disconnect();
+    connected = false;
+    els.connDot.classList.remove('live');
+    els.connLabel.textContent = 'disconnected';
+    els.connectBtn.textContent = 'Connect';
+    els.connectBtn.style.display = '';
+    els.connectBtn.disabled = false;
+    els.disconnectBtn.style.display = 'none';
+
+    // disconnectTello() on the main side already tore down video/recording —
+    // mirror that here so the UI doesn't show a stale "live" state.
+    if (videoOn) {
+      if (recordingOn) {
+        recordingOn = false;
+        els.recordToggle.classList.remove('active');
+        if (recordTimer) { clearInterval(recordTimer); recordTimer = null; }
+        els.recordTime.textContent = '';
+      }
+      els.videoImg.classList.remove('active');
+      els.videoImg.src = '';
+      els.videoPlaceholder.classList.remove('hidden');
+      videoOn = false;
+      els.videoToggle.textContent = 'Start Video';
+    }
+    setEnabled(false);
+  } catch (err) {
+    logLine(`disconnect error: ${err.message}`);
+    els.disconnectBtn.disabled = false;
   }
 });
 
@@ -153,9 +193,13 @@ document.querySelectorAll('[data-flip]').forEach((btn) => {
 els.distanceSlider.addEventListener('input', () => {
   els.distanceOut.textContent = `${els.distanceSlider.value}cm`;
 });
+els.distanceSlider.addEventListener('change', () => els.distanceSlider.blur());
+
 els.angleSlider.addEventListener('input', () => {
   els.angleOut.textContent = `${els.angleSlider.value}°`;
 });
+els.angleSlider.addEventListener('change', () => els.angleSlider.blur());
+
 els.speedSlider.addEventListener('change', async () => {
   els.speedOut.textContent = els.speedSlider.value;
   try {
@@ -163,6 +207,7 @@ els.speedSlider.addEventListener('change', async () => {
   } catch (err) {
     logLine(`error: ${err.message}`);
   }
+  els.speedSlider.blur();
 });
 els.speedSlider.addEventListener('input', () => {
   els.speedOut.textContent = els.speedSlider.value;
