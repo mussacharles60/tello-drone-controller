@@ -31,8 +31,8 @@ const VIDEO_HTTP_PORT = 3005;
 // ----- State -------------------------------------------------------------
 
 let mainWindow = null;
-const commandSocket = dgram.createSocket('udp4');
-const stateSocket = dgram.createSocket('udp4');
+let commandSocket = null; // dgram.createSocket('udp4');
+let stateSocket = null; // dgram.createSocket('udp4');
 let socketsReady = false;
 let pendingCommand = null;
 let lastState = {};
@@ -58,21 +58,28 @@ function log(msg) {
 
 // ----- Command socket ------------------------------------------------------
 
-commandSocket.on('message', (msg) => {
-  const response = msg.toString().trim();
-  if (pendingCommand) {
-    clearTimeout(pendingCommand.timer);
-    const { resolve, cmd } = pendingCommand;
-    pendingCommand = null;
-    resolve({ cmd, response });
-  } else {
-    log(`(unrequested) ${response}`);
-  }
-});
-commandSocket.on('error', (err) => log(`command socket error: ${err.message}`));
+function setupCommandSocket() {
+  commandSocket = dgram.createSocket('udp4');
+  commandSocket.on('message', (msg) => {
+    const response = msg.toString().trim();
+    if (pendingCommand) {
+      clearTimeout(pendingCommand.timer);
+      const { resolve, cmd } = pendingCommand;
+      pendingCommand = null;
+      resolve({ cmd, response });
+    } else {
+      log(`(unrequested) ${response}`);
+    }
+  });
+  commandSocket.on('error', (err) => log(`command socket error: ${err.message}`));
+}
 
 function sendCommand(cmd) {
   return new Promise((resolve, reject) => {
+    if (!commandSocket) {
+      reject(new Error('not connected'));
+      return;
+    }
     if (pendingCommand) {
       reject(new Error(`busy — still waiting on reply to "${pendingCommand.cmd}"`));
       return;
@@ -93,6 +100,44 @@ function sendCommand(cmd) {
     });
   });
 }
+
+// ----- Command socket ------------------------------------------------------
+
+// commandSocket.on('message', (msg) => {
+//   const response = msg.toString().trim();
+//   if (pendingCommand) {
+//     clearTimeout(pendingCommand.timer);
+//     const { resolve, cmd } = pendingCommand;
+//     pendingCommand = null;
+//     resolve({ cmd, response });
+//   } else {
+//     log(`(unrequested) ${response}`);
+//   }
+// });
+// commandSocket.on('error', (err) => log(`command socket error: ${err.message}`));
+
+// function sendCommand(cmd) {
+//   return new Promise((resolve, reject) => {
+//     if (pendingCommand) {
+//       reject(new Error(`busy — still waiting on reply to "${pendingCommand.cmd}"`));
+//       return;
+//     }
+//     const timer = setTimeout(() => {
+//       pendingCommand = null;
+//       reject(new Error(`timed out waiting for response to "${cmd}"`));
+//     }, COMMAND_TIMEOUT_MS);
+
+//     pendingCommand = { resolve, reject, timer, cmd };
+//     const buf = Buffer.from(cmd, 'utf8');
+//     commandSocket.send(buf, 0, buf.length, COMMAND_PORT, TELLO_IP, (err) => {
+//       if (err) {
+//         clearTimeout(timer);
+//         pendingCommand = null;
+//         reject(err);
+//       }
+//     });
+//   });
+// }
 
 async function sendCommandWithRetry(cmd, attempts = 3, gapMs = 800) {
   let lastErr;
@@ -126,17 +171,23 @@ function parseState(str) {
   return out;
 }
 
-stateSocket.on('message', (msg) => {
-  lastState = parseState(msg.toString());
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('tello:state', lastState);
-  }
-});
-stateSocket.on('error', (err) => log(`state socket error: ${err.message}`));
+function setupStateSocket() {
+  stateSocket = dgram.createSocket('udp4');
+  stateSocket.on('message', (msg) => {
+    lastState = parseState(msg.toString());
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('tello:state', lastState);
+    }
+  });
+  stateSocket.on('error', (err) => log(`state socket error: ${err.message}`));
+}
 
 function startSockets() {
   if (socketsReady) return Promise.resolve();
   return new Promise((resolve, reject) => {
+    setupCommandSocket();
+    setupStateSocket();
+
     let readyCount = 0;
     const done = () => {
       readyCount += 1;
@@ -150,6 +201,38 @@ function startSockets() {
     commandSocket.bind(LOCAL_COMMAND_PORT, '0.0.0.0', done);
     stateSocket.bind(STATE_PORT, '0.0.0.0', done);
   });
+}
+
+function isLikelyAirborne() {
+  // Best-effort safety check using the last telemetry we saw. If we've
+  // never gotten telemetry, we can't know — callers should treat that
+  // as "assume it might be flying" and let the human decide.
+  return typeof lastState.h === 'number' && lastState.h > 0;
+}
+
+async function disconnectTello() {
+  if (isLikelyAirborne()) {
+    throw new Error(`refusing to disconnect — drone reports height ${lastState.h}cm, land first`);
+  }
+
+  stopVideo();
+
+  if (pendingCommand) {
+    clearTimeout(pendingCommand.timer);
+    pendingCommand.reject(new Error('disconnected'));
+    pendingCommand = null;
+  }
+  if (commandSocket) {
+    commandSocket.close();
+    commandSocket = null;
+  }
+  if (stateSocket) {
+    stateSocket.close();
+    stateSocket = null;
+  }
+  socketsReady = false;
+  lastState = {};
+  log('disconnected.');
 }
 
 // ----- Video pipeline: ffmpeg (H.264 -> mpjpeg) -> local HTTP server -----
@@ -407,6 +490,8 @@ ipcMain.handle('tello:command', async (_event, cmd) => sendCommand(cmd));
 
 ipcMain.handle('tello:emergency', async () => sendCommand('emergency'));
 
+ipcMain.handle('tello:disconnect', async () => disconnectTello());
+
 ipcMain.handle('tello:video:start', async () => {
   await sendCommand('streamon');
   return startVideo();
@@ -479,7 +564,7 @@ app.on('before-quit', async (event) => {
   } catch (err) {
     // ignore — likely already landed or never took off
   }
-  commandSocket.close();
-  stateSocket.close();
+  commandSocket?.close();
+  stateSocket?.close();
   app.exit(0);
 });
