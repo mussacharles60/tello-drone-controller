@@ -8,7 +8,7 @@
     "start": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "build:installer": "npm run pack && npm run dist"
+    "build": "npm run pack && npm run dist"
   },
   "devDependencies": {
     "electron": "^31.0.0",
