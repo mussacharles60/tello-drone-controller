@@ -21,6 +21,8 @@ html, body {
   color: var(--text-bright);
   font-family: var(--font-ui);
   overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .mono { font-family: var(--font-mono); }
@@ -132,11 +134,13 @@ body {
   padding: 16px;
   gap: 12px;
   min-width: 0;
+  min-height: 0;
 }
 
 .video-frame {
   position: relative;
   flex: 1;
+  min-height: 0;
   background: #000;
   border: 1px solid var(--hairline);
   border-radius: 6px;
@@ -144,7 +148,6 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  max-height: 80vh;
 }
 
 #video-img {
@@ -216,6 +219,23 @@ body {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline) var(--panel);
+}
+
+.control-panel::-webkit-scrollbar {
+  width: 10px;
+}
+.control-panel::-webkit-scrollbar-track {
+  background: var(--panel);
+}
+.control-panel::-webkit-scrollbar-thumb {
+  background: var(--hairline);
+  border-radius: 5px;
+  border: 2px solid var(--panel);
+}
+.control-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--amber);
 }
 
 .panel-block { display: flex; flex-direction: column; gap: 10px; }
