@@ -305,6 +305,8 @@ function startRecording() {
   recordProc = spawn('ffmpeg', [
     '-y',
     '-buffer_size', '2000000',
+    '-use_wallclock_as_timestamps', '1',
+    '-fflags', '+genpts',
     '-i', `udp://127.0.0.1:${RECORD_RELAY_PORT}`,
     '-c', 'copy',
     '-movflags', '+frag_keyframe+empty_moov',
@@ -321,9 +323,47 @@ function startRecording() {
     recording = false;
     recordProc = null;
   });
-  recordProc.on('close', (code) => {
-    log(`recording stopped (code ${code}) — saved to ${currentRecordingPath}`);
-    recordProc = null;
+    recordProc.on('close', (code) => {
+    const rawPath = currentRecordingPath;
+    log(`recording stopped (code ${code}) — finalizing ${rawPath}...`);
+
+    const tmpPath = rawPath.replace(/\.mp4$/, '.raw.mp4');
+    try {
+      fs.renameSync(rawPath, tmpPath);
+    } catch (err) {
+      log(`could not finalize recording: ${err.message}`);
+      recordProc = null;
+      return;
+    }
+
+    // Fragmented mp4 (frag_keyframe+empty_moov) survives an abrupt kill, but
+    // players see it as "streaming" data with no upfront index — that's the
+    // "Buffer remaining" behavior. This remux is a fast, lossless pass
+    // (still -c copy, no re-encoding) that rebuilds a normal index
+    // (faststart) so the finished file plays like any other local video.
+    const finalizeProc = spawn('ffmpeg', [
+      '-y',
+      '-i', tmpPath,
+      '-c', 'copy',
+      '-movflags', '+faststart',
+      rawPath,
+    ]);
+    finalizeProc.stderr.on('data', (chunk) => {
+      console.error(`[ffmpeg:finalize] ${chunk.toString()}`);
+    });
+    finalizeProc.on('error', (err) => {
+      log(`finalize step failed to start (${err.message}); raw file kept at ${tmpPath}`);
+      recordProc = null;
+    });
+    finalizeProc.on('close', (fcode) => {
+      if (fcode === 0) {
+        fs.unlink(tmpPath, () => {});
+        log(`recording saved -> ${rawPath}`);
+      } else {
+        log(`finalize step exited with code ${fcode}; raw file kept at ${tmpPath}`);
+      }
+      recordProc = null;
+    });
   });
 
   return { path: currentRecordingPath };
