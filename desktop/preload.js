@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('tello', {
   connect: () => ipcRenderer.invoke('tello:connect'),
+  disconnect: () => ipcRenderer.invoke('tello:disconnect'),
   command: (cmd) => ipcRenderer.invoke('tello:command', cmd),
   emergency: () => ipcRenderer.invoke('tello:emergency'),
   startVideo: () => ipcRenderer.invoke('tello:video:start'),
