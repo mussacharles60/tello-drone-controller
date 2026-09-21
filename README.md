@@ -34,6 +34,17 @@ Electron and Node.js.
   standard install wizard that lets the user choose their own install
   location.
 
+## Download
+ 
+Prebuilt Windows installer: see the
+[**Releases**](https://github.com/mussacharles60/tello-drone-controller/releases)
+page and grab the latest `Tello Pro Setup win x64 <version>.exe` (for windows). Run it, choose
+your install location, and launch **Tello Pro** from the Start Menu —
+no need to build from source.
+ 
+Building from source (below) is only needed if you want to modify the
+app yourself.
+
 ## Requirements
 
 - [Node.js](https://nodejs.org/) 18 or newer
