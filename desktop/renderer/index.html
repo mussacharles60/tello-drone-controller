@@ -20,6 +20,7 @@
       <div class="status-item mono">BAT <b id="bat-val">--</b>%</div>
       <div class="status-item mono">ALT <b id="alt-val">--</b>cm</div>
       <div class="status-item mono">T <b id="time-val">--</b>s</div>
+      <button id="help-btn" class="btn btn-ghost" title="How to connect &amp; fly">? Help</button>
       <button id="connect-btn" class="btn btn-primary">Connect</button>
       <button id="disconnect-btn" class="btn btn-ghost" style="display:none;">Disconnect</button>
     </div>
@@ -112,6 +113,53 @@
     </div>
     <div class="log" id="log"></div>
   </footer>
+
+  <div id="help-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Getting Started</span>
+        <button id="help-close" class="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-note">
+          <strong>Important — network:</strong> your computer must join the
+          drone's own Wi-Fi network — it appears in your Wi-Fi list as
+          something like <span class="mono">TELLO-XXXXXX</span>. The Tello
+          does not connect to your home router; it creates its own hotspot,
+          and there is no internet access while you're joined to it.
+        </div>
+
+        <ol class="modal-steps">
+          <li>Power on the Tello.</li>
+          <li>On your computer, open Wi-Fi settings and connect to
+            <span class="mono">TELLO-XXXXXX</span> (no password by default).</li>
+          <li>Come back here and click <b>Connect</b> in the top bar. Once
+            connected you'll see a green dot and the battery percentage.</li>
+          <li><b>Takeoff / Land</b> — the big toggle button, or press
+            <span class="mono">Space</span>.</li>
+          <li><b>Move</b> — the D-pad, or keyboard
+            <span class="mono">W A S D</span> to move,
+            <span class="mono">Q E</span> to rotate,
+            <span class="mono">↑ ↓</span> for altitude. Distance/angle per
+            press are set by the Trim sliders. Keyboard flight controls only
+            work once you're airborne.</li>
+          <li><b>Flip</b> — four buttons, enabled only mid-flight.</li>
+          <li><b>Start Video</b> to see the live feed; <b>Record</b> saves an
+            .mp4 to your Videos/TelloPro folder.</li>
+          <li><b>Emergency Stop</b> cuts the motors instantly — only for
+            when something's actually gone wrong, since the drone will drop.</li>
+          <li><b>Disconnect</b> only becomes available once landed, as a
+            safety measure.</li>
+        </ol>
+      </div>
+      <div class="modal-footer">
+        <label class="modal-checkbox">
+          <input type="checkbox" id="help-dont-show" /> Don't show this on startup
+        </label>
+        <button id="help-got-it" class="btn btn-primary">Got it</button>
+      </div>
+    </div>
+  </div>
 
   <script src="renderer.js"></script>
 </body>

@@ -5,6 +5,11 @@ const els = {
   connLabel: document.getElementById('conn-label'),
   connectBtn: document.getElementById('connect-btn'),
   disconnectBtn: document.getElementById('disconnect-btn'),
+  helpBtn: document.getElementById('help-btn'),
+  helpOverlay: document.getElementById('help-overlay'),
+  helpClose: document.getElementById('help-close'),
+  helpGotIt: document.getElementById('help-got-it'),
+  helpDontShow: document.getElementById('help-dont-show'),
   batVal: document.getElementById('bat-val'),
   altVal: document.getElementById('alt-val'),
   timeVal: document.getElementById('time-val'),
@@ -84,6 +89,36 @@ els.connectBtn.addEventListener('click', async () => {
     logLine(`connect failed: ${err.message}`);
   }
 });
+
+// ---- Help modal ----
+
+const HELP_DISMISS_KEY = 'tello-pro-hide-help';
+
+function openHelp() {
+  els.helpOverlay.classList.remove('hidden');
+}
+function closeHelp() {
+  els.helpOverlay.classList.add('hidden');
+  if (els.helpDontShow.checked) {
+    localStorage.setItem(HELP_DISMISS_KEY, '1');
+  }
+}
+
+els.helpBtn.addEventListener('click', openHelp);
+els.helpClose.addEventListener('click', closeHelp);
+els.helpGotIt.addEventListener('click', closeHelp);
+els.helpOverlay.addEventListener('click', (e) => {
+  if (e.target === els.helpOverlay) closeHelp();
+});
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape' && !els.helpOverlay.classList.contains('hidden')) {
+    closeHelp();
+  }
+});
+
+if (!localStorage.getItem(HELP_DISMISS_KEY)) {
+  openHelp();
+}
 
 // ---- Disconnect ----
 
