@@ -1,6 +1,6 @@
 {
   "name": "tello-pro",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Tello drone control console — controller UI + live video feed",
   "main": "main.js",
   "author": "Myssa Technologies Company Ltd",
