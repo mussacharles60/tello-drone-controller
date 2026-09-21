@@ -103,4 +103,4 @@ Company Ltd.
 
 ## License
 
-Add your license of choice here (e.g. MIT).
+MIT © 2026 Mussa Charles / Myssa Technologies Company Ltd. See LICENSE for the full text.
