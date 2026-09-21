@@ -82,6 +82,11 @@ els.connectBtn.addEventListener('click', async () => {
     els.connectBtn.style.display = 'none';
     els.disconnectBtn.style.display = '';
     setEnabled(flying);
+    try {
+      await window.tello.command(`speed ${els.speedSlider.value}`);
+    } catch (err) {
+      // non-fatal — drone just keeps its own default speed until adjusted
+    }
   } catch (err) {
     els.connLabel.textContent = 'connection failed';
     els.connectBtn.textContent = 'Retry Connect';
@@ -225,18 +230,50 @@ document.querySelectorAll('[data-flip]').forEach((btn) => {
 
 // ---- Trim sliders ----
 
+// ---- Trim sliders (persisted) ----
+
+const DISTANCE_KEY = 'tello-pro-distance';
+const ANGLE_KEY = 'tello-pro-angle';
+const SPEED_KEY = 'tello-pro-speed';
+
+function restoreSliders() {
+  const savedDistance = localStorage.getItem(DISTANCE_KEY);
+  if (savedDistance !== null) {
+    els.distanceSlider.value = savedDistance;
+    els.distanceOut.textContent = `${savedDistance}cm`;
+  }
+  const savedAngle = localStorage.getItem(ANGLE_KEY);
+  if (savedAngle !== null) {
+    els.angleSlider.value = savedAngle;
+    els.angleOut.textContent = `${savedAngle}°`;
+  }
+  const savedSpeed = localStorage.getItem(SPEED_KEY);
+  if (savedSpeed !== null) {
+    els.speedSlider.value = savedSpeed;
+    els.speedOut.textContent = savedSpeed;
+  }
+}
+restoreSliders();
+
 els.distanceSlider.addEventListener('input', () => {
   els.distanceOut.textContent = `${els.distanceSlider.value}cm`;
 });
-els.distanceSlider.addEventListener('change', () => els.distanceSlider.blur());
+els.distanceSlider.addEventListener('change', () => {
+  localStorage.setItem(DISTANCE_KEY, els.distanceSlider.value);
+  els.distanceSlider.blur();
+});
 
 els.angleSlider.addEventListener('input', () => {
   els.angleOut.textContent = `${els.angleSlider.value}°`;
 });
-els.angleSlider.addEventListener('change', () => els.angleSlider.blur());
+els.angleSlider.addEventListener('change', () => {
+  localStorage.setItem(ANGLE_KEY, els.angleSlider.value);
+  els.angleSlider.blur();
+});
 
 els.speedSlider.addEventListener('change', async () => {
   els.speedOut.textContent = els.speedSlider.value;
+  localStorage.setItem(SPEED_KEY, els.speedSlider.value);
   try {
     await window.tello.command(`speed ${els.speedSlider.value}`);
   } catch (err) {
