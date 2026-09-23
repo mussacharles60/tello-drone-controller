@@ -15,6 +15,44 @@ const fs = require('fs');
 const dgram = require('dgram');
 const { spawn, spawnSync } = require('child_process');
 const http = require('http');
+const ffmpegStatic = require('ffmpeg-static');
+const ffprobeStatic = require('ffprobe-static');
+
+// ----- Bundled ffmpeg/ffprobe: resolve the real on-disk path -------------
+//
+// ffmpeg-static/ffprobe-static give us a path assuming the binary sits
+// right there in node_modules. That's true in dev, but a packaged app has
+// its files sealed inside app.asar — and a binary can't be executed from
+// inside an asar archive. electron-builder's asarUnpack config (see
+// package.json) extracts these two binaries into a sibling
+// "app.asar.unpacked" folder instead; this just points at that real path
+// once the app is actually packaged.
+
+function resolveBinaryPath(rawPath) {
+  let binaryPath = rawPath;
+  if (app.isPackaged) {
+    binaryPath = binaryPath.replace('app.asar', 'app.asar.unpacked');
+  }
+  if (process.platform === 'win32' && !binaryPath.endsWith('.exe')) {
+    binaryPath += '.exe';
+  }
+  return binaryPath;
+}
+
+function getFfmpegPath() {
+  const resolved = resolveBinaryPath(ffmpegStatic);
+  console.log(`[ffmpeg] resolved binary path (${process.platform}): ${resolved}`);
+  return resolved;
+}
+
+function getFfprobePath() {
+  const resolved = resolveBinaryPath(ffprobeStatic.path);
+  console.log(`[ffprobe] resolved binary path (${process.platform}): ${resolved}`);
+  return resolved;
+}
+
+const FFMPEG_PATH = getFfmpegPath();
+const FFPROBE_PATH = getFfprobePath(); // not called yet, but resolved and ready if we ever want to probe stream info
 
 // ----- Configuration ---------------------------------------------------
 
@@ -100,44 +138,6 @@ function sendCommand(cmd) {
     });
   });
 }
-
-// ----- Command socket ------------------------------------------------------
-
-// commandSocket.on('message', (msg) => {
-//   const response = msg.toString().trim();
-//   if (pendingCommand) {
-//     clearTimeout(pendingCommand.timer);
-//     const { resolve, cmd } = pendingCommand;
-//     pendingCommand = null;
-//     resolve({ cmd, response });
-//   } else {
-//     log(`(unrequested) ${response}`);
-//   }
-// });
-// commandSocket.on('error', (err) => log(`command socket error: ${err.message}`));
-
-// function sendCommand(cmd) {
-//   return new Promise((resolve, reject) => {
-//     if (pendingCommand) {
-//       reject(new Error(`busy — still waiting on reply to "${pendingCommand.cmd}"`));
-//       return;
-//     }
-//     const timer = setTimeout(() => {
-//       pendingCommand = null;
-//       reject(new Error(`timed out waiting for response to "${cmd}"`));
-//     }, COMMAND_TIMEOUT_MS);
-
-//     pendingCommand = { resolve, reject, timer, cmd };
-//     const buf = Buffer.from(cmd, 'utf8');
-//     commandSocket.send(buf, 0, buf.length, COMMAND_PORT, TELLO_IP, (err) => {
-//       if (err) {
-//         clearTimeout(timer);
-//         pendingCommand = null;
-//         reject(err);
-//       }
-//     });
-//   });
-// }
 
 async function sendCommandWithRetry(cmd, attempts = 3, gapMs = 800) {
   let lastErr;
@@ -238,7 +238,7 @@ async function disconnectTello() {
 // ----- Video pipeline: ffmpeg (H.264 -> mpjpeg) -> local HTTP server -----
 
 function checkFfmpegAvailable() {
-  const result = spawnSync('ffmpeg', ['-version']);
+  const result = spawnSync(FFMPEG_PATH, ['-version']);
   if (result.error) {
     return { ok: false, detail: result.error.message };
   }
@@ -254,8 +254,8 @@ function startVideo() {
 
   const check = checkFfmpegAvailable();
   if (!check.ok) {
-    log(`ffmpeg not found on PATH (${check.detail}). Install it and make sure "ffmpeg -version" works from a terminal, then restart this app.`);
-    throw new Error('ffmpeg not found on PATH');
+    log(`bundled ffmpeg binary failed to run (${check.detail}). This usually means a packaging problem, not a missing install — try reinstalling the app.`);
+    throw new Error('bundled ffmpeg failed to run');
   }
   log(`ffmpeg found: ${check.detail}`);
 
@@ -280,10 +280,10 @@ function startVideo() {
 
   let firstFrameSeen = false;
 
-  ffmpegProc = spawn('ffmpeg', [
+  ffmpegProc = spawn(FFMPEG_PATH, [
     '-buffer_size', '2000000',
     '-i', `udp://127.0.0.1:${LIVE_RELAY_PORT}`,
-    '-pix_fmt', 'yuv420p',
+    '-pix_fmt', 'yuvj420p',
     '-f', 'mpjpeg',
     '-q:v', '5',
     '-r', '15',
@@ -385,7 +385,7 @@ function startRecording() {
 
   recording = true; // relay starts forwarding to RECORD_RELAY_PORT immediately
 
-  recordProc = spawn('ffmpeg', [
+  recordProc = spawn(FFMPEG_PATH, [
     '-y',
     '-buffer_size', '2000000',
     '-use_wallclock_as_timestamps', '1',
@@ -406,7 +406,7 @@ function startRecording() {
     recording = false;
     recordProc = null;
   });
-    recordProc.on('close', (code) => {
+  recordProc.on('close', (code) => {
     const rawPath = currentRecordingPath;
     log(`recording stopped (code ${code}) — finalizing ${rawPath}...`);
 
@@ -424,7 +424,7 @@ function startRecording() {
     // "Buffer remaining" behavior. This remux is a fast, lossless pass
     // (still -c copy, no re-encoding) that rebuilds a normal index
     // (faststart) so the finished file plays like any other local video.
-    const finalizeProc = spawn('ffmpeg', [
+    const finalizeProc = spawn(FFMPEG_PATH, [
       '-y',
       '-i', tmpPath,
       '-c', 'copy',

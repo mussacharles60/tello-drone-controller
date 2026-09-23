@@ -10,6 +10,10 @@
     "dist": "electron-builder",
     "build": "npm run pack && npm run dist"
   },
+  "dependencies": {
+    "ffmpeg-static": "^5.3.0",
+    "ffprobe-static": "^3.1.0"
+  },
   "devDependencies": {
     "electron": "^31.0.0",
     "electron-builder": "^25.1.8"
@@ -26,8 +30,14 @@
     "directories": {
       "output": "dist"
     },
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/ffmpeg-static/ffmpeg",
+      "**/node_modules/ffmpeg-static/ffmpeg.exe"
+    ],
     "win": {
-      "target": "nsis"
+      "target": ["nsis", "zip"],
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,
@@ -37,10 +47,14 @@
       "createStartMenuShortcut": true
     },
     "mac": {
-      "target": "dmg"
+      "target": ["dmg", "zip"],
+      "icon": "build/icon.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
     },
     "linux": {
-      "target": "AppImage"
+      "target": ["AppImage", "deb"],
+      "icon": "build/icon.png"
     }
   }
 }

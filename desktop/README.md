@@ -5,21 +5,18 @@ live video preview, in one app.
 
 ## Setup
 
-1. Requires [ffmpeg](https://ffmpeg.org/) installed and on your PATH
-   (for the video feed only — the flight controls work without it).
-   - macOS: `brew install ffmpeg`
-   - Linux: `sudo apt install ffmpeg`
-   - Windows: `choco install ffmpeg` or download from ffmpeg.org
+1. Install dependencies:
+   ffmpeg is bundled with the app via `ffmpeg-static` — no separate
+   install needed, on any platform.
 
-2. Install dependencies:
    ```
    npm install
    ```
 
-3. Connect your computer's Wi-Fi to the drone's own network
+2. Connect your computer's Wi-Fi to the drone's own network
    (`TELLO-XXXXXX`) — there's no router involved, you join the drone directly.
 
-4. Run:
+3. Run:
    ```
    npm start
    ```
